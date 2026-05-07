@@ -1,58 +1,35 @@
 package sanchez.santiago.biometricsss.screens
 
 import android.content.Context
+import android.widget.Toast
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricPrompt
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import sanchez.santiago.biometricsss.viewmodels.LoginViewModel
 import java.util.concurrent.Executor
 
 @Composable
-fun LoginScreen(innerPadding: PaddingValues, context: Context) {
+fun LoginScreen(innerPadding: PaddingValues, context: Context, viewModel: LoginViewModel) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var authStatus by remember { mutableStateOf("Esperando autenticación") }
+    val biometricsActive by viewModel.biometricsActive.collectAsState()
+    
     var biometricAvailable by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val biometricManager = BiometricManager.from(context)
-        when (biometricManager.canAuthenticate(BIOMETRIC_STRONG)) {
-            BiometricManager.BIOMETRIC_SUCCESS -> {
-                authStatus = "Biométricos disponibles. Presiona el botón para iniciar"
-                biometricAvailable = true
-            }
-            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> {
-                authStatus = "Biométricos no disponibles"
-                biometricAvailable = false
-            }
-            BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> {
-                authStatus = "Biométricos no configurados"
-                biometricAvailable = false
-            }
-            else -> {
-                authStatus = "Error de biometría"
-                biometricAvailable = false
-            }
-        }
+        biometricAvailable = biometricManager.canAuthenticate(BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
     }
 
     val activity = context as FragmentActivity
@@ -62,17 +39,19 @@ fun LoginScreen(innerPadding: PaddingValues, context: Context) {
         BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                 super.onAuthenticationError(errorCode, errString)
-                authStatus = "Error de autenticación: $errString"
+                Toast.makeText(context, "Error: $errString", Toast.LENGTH_SHORT).show()
             }
 
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 super.onAuthenticationSucceeded(result)
-                authStatus = "Autenticación exitosa"
+                viewModel.loginBiometric {
+                    Toast.makeText(context, "Bienvenido", Toast.LENGTH_SHORT).show()
+                }
             }
 
             override fun onAuthenticationFailed() {
                 super.onAuthenticationFailed()
-                authStatus = "Autenticación fallida"
+                Toast.makeText(context, "Autenticación fallida", Toast.LENGTH_SHORT).show()
             }
         })
     }
@@ -80,32 +59,67 @@ fun LoginScreen(innerPadding: PaddingValues, context: Context) {
     val promptInfo = remember {
         BiometricPrompt.PromptInfo.Builder()
             .setTitle("Autenticación biométrica")
-            .setSubtitle("Inicia sesión con tu huella o cara digital")
-            .setDescription("Coloca tu dedo en el sensor, o mira tu cámara")
-            .setNegativeButtonText("Cancelar")
+            .setSubtitle("Inicia sesión con tu huella")
+            .setNegativeButtonText("Usar contraseña")
             .build()
     }
 
-    Column(modifier = Modifier.padding(innerPadding)) {
-        Text("Iniciar sesión")
-        TextField(email, onValueChange = { email = it }, label = { Text("Email") })
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = "Iniciar Sesión", style = MaterialTheme.typography.headlineLarge)
+        
+        Spacer(modifier = Modifier.height(16.dp))
+
         TextField(
-            password,
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Correo electrónico") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+
+        TextField(
+            value = password,
             onValueChange = { password = it },
             label = { Text("Contraseña") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth()
         )
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
-                biometricPrompt.authenticate(promptInfo)
+                if (biometricsActive && email.isEmpty() && password.isEmpty()) {
+                    if (biometricAvailable) {
+                        biometricPrompt.authenticate(promptInfo)
+                    } else {
+                        Toast.makeText(context, "Biometría no disponible", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    viewModel.login(email, password, 
+                        onSuccess = { Toast.makeText(context, "Login exitoso", Toast.LENGTH_SHORT).show() },
+                        onError = { error -> Toast.makeText(context, error, Toast.LENGTH_SHORT).show() }
+                    )
+                }
             },
-            enabled = biometricAvailable
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Iniciar sesión con biometría")
+            Text(if (biometricsActive && email.isEmpty() && password.isEmpty()) "Login con Huella" else "Entrar")
         }
-
-        Text(text = authStatus)
-        Spacer(modifier = Modifier.height(32.dp))
+        
+        if (biometricsActive && biometricAvailable) {
+            TextButton(onClick = { biometricPrompt.authenticate(promptInfo) }) {
+                Text("Usar Biometría")
+            }
+        }
     }
 }

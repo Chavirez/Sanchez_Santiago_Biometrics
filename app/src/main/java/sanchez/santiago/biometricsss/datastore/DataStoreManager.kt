@@ -47,6 +47,13 @@ class DataStoreManager(private val context: Context) {
         context.dataStore.edit {
             it[IS_LOGGED_IN] = false
             it[USERNAME] = ""
+            it[BIOMETRICS_ACTIVE] = false
+        }
+    }
+
+    suspend fun logoutKeepUser() {
+        context.dataStore.edit {
+            it[IS_LOGGED_IN] = false
         }
     }
 
